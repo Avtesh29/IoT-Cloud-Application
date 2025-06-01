@@ -1,0 +1,4 @@
+# .gitignore
+
+Iot-Cloud/
+__pycache__/
