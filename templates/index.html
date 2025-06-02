@@ -12,15 +12,11 @@
             <p style="color: red;">{{ error_message }}</p>
         {% else %}
             <h1 style="margin-top: 30px; text-align: center;">Sensor Readings Website</h1>
-            <p>
-                Data goes here:<br><br>
-                Time: <pre style="display: inline;">{{ f_date }}</pre><br>
-                Today's Average Forecast: {{ w_data }}
-            </p>
-            
+
+            <!-- Temperature Graph -->
             {% if graph_image %}
             <div class="graph-container" style="margin-top: 30px; text-align: center;">
-                <h2 style="text-align: center;">Temperature Forecast Graph</h2>
+                <h2 style="text-align: center;">Temperature Graph</h2>
                 <img src="data:image/png;base64,{{ graph_image }}" alt="Temperature Forecast Graph">
             </div>
             {% else %}
@@ -29,7 +25,41 @@
             </div>
             {% endif %}
 
-            <div>hello</div> 
+            <!-- Humidity Graph -->
+            {% if graph_image %}
+            <div class="graph-container" style="margin-top: 30px; text-align: center;">
+                <h2 style="text-align: center;">Humidity Graph</h2>
+                <img src="data:image/png;base64,{{ graph_image }}" alt="Temperature Forecast Graph">
+            </div>
+            {% else %}
+            <div class="graph-container" style="margin-top: 30px;">
+                <p>Humidity graph could not be generated.</p>
+            </div>
+            {% endif %}
+
+            <!-- Soil Moisture Graph -->
+            {% if graph_image %}
+            <div class="graph-container" style="margin-top: 30px; text-align: center;">
+                <h2 style="text-align: center;">Soil Moisture Graph</h2>
+                <img src="data:image/png;base64,{{ graph_image }}" alt="Temperature Forecast Graph">
+            </div>
+            {% else %}
+            <div class="graph-container" style="margin-top: 30px;">
+                <p>Soil moisture graph could not be generated.</p>
+            </div>
+            {% endif %}
+
+            <!-- Wind Speed Graph -->
+            {% if graph_image %}
+            <div class="graph-container" style="margin-top: 30px; text-align: center;">
+                <h2 style="text-align: center;">Wind Speed Graph</h2>
+                <img src="data:image/png;base64,{{ graph_image }}" alt="Temperature Forecast Graph">
+            </div>
+            {% else %}
+            <div class="graph-container" style="margin-top: 30px;">
+                <p>Wind speed graph could not be generated.</p>
+            </div>
+            {% endif %}
         {% endif %}
     </body>
 </html>

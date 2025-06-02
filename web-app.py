@@ -12,8 +12,66 @@ import mplcyberpunk
 from mysql.connector import MySQLConnection, Error
 from config import read_config
 
+# Constants
+LATITUDE = 37.0
+LONGITUDE = -122.06
+
+API_URL = "https://api.open-meteo.com/v1/forecast" 
 
 app = Flask(__name__)
+
+
+# Send Open-Meteo request with params
+def getReq(fields):
+    try: 
+        # Send request for temperature data
+        response = requests.get(API_URL, params=fields)
+        # Get data
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"API request failed: {e}")
+        return None
+    except (KeyError, IndexError, TypeError) as e:
+        app.logger.error(f"Error processing API data: {e}")
+        return None
+    except requests.exceptions.JSONDecodeError:
+        app.logger.error(f"Failed to decode JSON. Response: {response.text if response else 'No response'}")
+        return None
+    return data
+
+# Get All Forecast Values
+def getForecast():
+    req_fields = {
+        'latitude': LATITUDE,
+        'longitude': LONGITUDE,
+        'hourly': "relative_humidity_2m,soil_moisture_3_to_9cm",
+        'daily': "temperature_2m_max,temperature_2m_min,wind_speed_10m_max",
+        'timezone': "America/Los_Angeles",
+        'temperature_unit': "celsius",
+        'wind_speed_unit': "ms",
+        'forecast_days': 1
+        }
+    data = getReq(req_fields) 
+    # print("Forecast: ", data)
+
+    min_t = data['daily']['temperature_2m_min'][0]
+    max_t = data['daily']['temperature_2m_max'][0]
+    avg_t_forecast = round((max_t + min_t) / 2, 1)
+    print(f"Temperature Forecast: Min-{min_t}°C, Max-{max_t}°C, Avg-{avg_t_forecast}°C")
+
+    all_h = data['hourly']['relative_humidity_2m']
+    avg_h_forecast = round(sum(all_h) / len(all_h), 1)
+    print(f"Humidity Forecast: Avg-{avg_h_forecast} %")
+
+    all_s = data['hourly']['soil_moisture_3_to_9cm']
+    soil_3_9cm_forecast = round(sum(all_s) / len(all_s), 1) 
+    print(f"Soil Forecast: Avg-{soil_3_9cm_forecast}")
+
+    max_w = data['daily']['wind_speed_10m_max'][0]
+    print(f"Wind Speed Forecast: Max-{max_w} m/s")
+
+    return
+
 
 # Get Weather
 def getWeather():
@@ -38,16 +96,8 @@ def getWeather():
             'temperature_unit': "celsius"
             })
 
-        # Init data, get data, and get code
-        weather_data_str = ""
+        # Get data
         data = response.json()
-
-        # Get average forecast for today
-        max_today = data['daily']['temperature_2m_max'][0]            # Max Temp
-        min_today = data['daily']['temperature_2m_min'][0]            # Min Temp
-        cels = data['daily_units']['temperature_2m_max']              # Celsius Units
-        average_today = (float(max_today) + float(min_today)) / 2     # Average
-        weather_data_str = f"{average_today:.1f} {cels}"
 
         # Prepare data for the graph (e.g., next 7 days)
         graph_data = {
@@ -58,15 +108,16 @@ def getWeather():
         
     except requests.exceptions.RequestException as e:
         app.logger.error(f"API request failed: {e}")
-        return None, formatted_datetime, None # weather_string, date_string, graph_data
+        return None
     except (KeyError, IndexError, TypeError) as e:
         app.logger.error(f"Error processing API data: {e}")
-        return None, formatted_datetime, None
+        return None
     except requests.exceptions.JSONDecodeError:
         app.logger.error(f"Failed to decode JSON. Response: {response.text if response else 'No response'}")
-        return None, formatted_datetime, None
+        return None
     
-    return weather_data_str, formatted_datetime, graph_data
+    return graph_data
+
 
 def get_averages(max_temps, min_temps):
     avg_temps = []
@@ -92,7 +143,7 @@ def create_temperature_graph(dates, max_temps, min_temps):
         ax.plot(short_dates, avg_temps, marker='o', linestyle='-', color='g', label='Avg Temp (°C)')
         ax.plot(short_dates, min_temps, marker='s', linestyle='--', color='b', label='Min Temp (°C)')
         
-        ax.set_title('7-Day Temperature Forecast')
+        ax.set_title('Temperature Readings and Forecast')
         ax.set_xlabel('Date')
         ax.set_ylabel('Temperature (°C)')
         ax.legend()
@@ -100,6 +151,7 @@ def create_temperature_graph(dates, max_temps, min_temps):
         
         plt.xticks(rotation=45, ha="right") # Rotate x-axis labels for better readability
         plt.tight_layout() # Adjust layout to prevent labels from overlapping
+        mplcyberpunk.make_lines_glow()
 
         # Save it to a BytesIO object
         img_io = io.BytesIO()
@@ -139,9 +191,10 @@ def connect(config):
 @app.route("/")
 @app.route("/home")
 def home():
+    getTemp()
     config = read_config()
     connect(config)
-    weather_string, current_date_formatted, daily_forecast_data = getWeather()
+    daily_forecast_data = getWeather()
     graph_image_base64 = None
 
     if daily_forecast_data:
@@ -151,10 +204,8 @@ def home():
             daily_forecast_data['min_temps']
         )
 
-    if weather_string:
+    if graph_image_base64:
         return render_template('index.html',
-                               w_data=weather_string,
-                               f_date=current_date_formatted,
                                graph_image=graph_image_base64, 
                                error_message=None)
     else:
@@ -163,6 +214,7 @@ def home():
                                graph_image=None) 
 
 
-# Run Serve
+# Run Server
 if __name__ == '__main__':
+    getForecast()
     app.run(debug=True, host='0.0.0.0', port=5000)
