@@ -52,104 +52,46 @@ def getForecast():
         'forecast_days': 1
         }
     data = getReq(req_fields) 
-    # print("Forecast: ", data)
 
     min_t = data['daily']['temperature_2m_min'][0]
     max_t = data['daily']['temperature_2m_max'][0]
     avg_t_forecast = round((max_t + min_t) / 2, 1)
-    print(f"Temperature Forecast: Min-{min_t}°C, Max-{max_t}°C, Avg-{avg_t_forecast}°C")
 
     all_h = data['hourly']['relative_humidity_2m']
     avg_h_forecast = round(sum(all_h) / len(all_h), 1)
-    print(f"Humidity Forecast: Avg-{avg_h_forecast} %")
 
     all_s = data['hourly']['soil_moisture_3_to_9cm']
     soil_3_9cm_forecast = round(sum(all_s) / len(all_s), 1) 
-    print(f"Soil Forecast: Avg-{soil_3_9cm_forecast}")
 
     max_w = data['daily']['wind_speed_10m_max'][0]
-    print(f"Wind Speed Forecast: Max-{max_w} m/s")
 
-    return
-
-
-# Get Weather
-def getWeather():
-    # Get and format current date information
-    current_datetime = datetime.now(ZoneInfo("America/Los_Angeles"))
-    formatted_datetime = current_datetime.strftime("%I:%M %p\n%m-%d-%Y\n")
-
-    # UCSC lat and lng
-    latitude = 37.0
-    longitude = -122.06
-
-    # OpenMeteo API Endpoint
-    API_URL = "https://api.open-meteo.com/v1/forecast"
-
-    try: 
-        # Send request for temperature data
-        response = requests.get(API_URL, params={
-            'latitude': latitude,
-            'longitude': longitude,
-            'daily': "temperature_2m_max,temperature_2m_min",
-            'timezone': "America/Los_Angeles",
-            'temperature_unit': "celsius"
-            })
-
-        # Get data
-        data = response.json()
-
-        # Prepare data for the graph (e.g., next 7 days)
-        graph_data = {
-            'dates': data['daily']['time'], # List of date strings
-            'max_temps': data['daily']['temperature_2m_max'], # List of max temps
-            'min_temps': data['daily']['temperature_2m_min']  # List of min temps
-        }
-        
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"API request failed: {e}")
-        return None
-    except (KeyError, IndexError, TypeError) as e:
-        app.logger.error(f"Error processing API data: {e}")
-        return None
-    except requests.exceptions.JSONDecodeError:
-        app.logger.error(f"Failed to decode JSON. Response: {response.text if response else 'No response'}")
-        return None
-    
-    return graph_data
-
-
-def get_averages(max_temps, min_temps):
-    avg_temps = []
-    for max, min in zip(max_temps, min_temps):
-        avg = (max + min) / 2
-        avg_temps.append(round(avg, 1))
-    return avg_temps
+    return avg_t_forecast, avg_h_forecast, soil_3_9cm_forecast, max_w
 
 
 # Function to generate the graph image
-def create_temperature_graph(dates, max_temps, min_temps):
-    if not dates or not max_temps or not min_temps:
+def create_graph(forecast, ylabel, line_label, title):
+    if not forecast:
         return None
     try:
         # plt.style.use('https://github.com/dhaitz/matplotlib-stylesheets/raw/master/pitayasmoothie-light.mplstyle')
         plt.style.use("cyberpunk")
 
         fig, ax = plt.subplots(figsize=(10, 5)) # Adjust figsize as needed
-        short_dates = [d.split('-', 1)[1] for d in dates] # "YYYY-MM-DD" -> "MM-DD"
-        avg_temps = get_averages(max_temps, min_temps)
+        # short_dates = [d.split('-', 1)[1] for d in dates] # "YYYY-MM-DD" -> "MM-DD"
 
-        ax.plot(short_dates, max_temps, marker='s', linestyle='--', color='r', label='Max Temp (°C)')
-        ax.plot(short_dates, avg_temps, marker='o', linestyle='-', color='g', label='Avg Temp (°C)')
-        ax.plot(short_dates, min_temps, marker='s', linestyle='--', color='b', label='Min Temp (°C)')
+        # ax.set_xlim()     # use later for settings x and y axis
+        # ax.set_ylim()
+
+        # ax.plot(short_dates, avg_temp, marker='o', linestyle='-', color='g', label='Avg Temp Forecast (°C)')
+        ax.axhline(y=forecast, linestyle='-', color='b', label=line_label)
         
-        ax.set_title('Temperature Readings and Forecast')
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Temperature (°C)')
+        ax.set_title(title)
+        ax.set_xlabel('Dates')
+        ax.set_ylabel(ylabel)
         ax.legend()
         ax.grid(True)
         
-        plt.xticks(rotation=45, ha="right") # Rotate x-axis labels for better readability
+        # plt.xticks(rotation=45, ha="right") # Rotate x-axis labels for better readability
         plt.tight_layout() # Adjust layout to prevent labels from overlapping
         mplcyberpunk.make_lines_glow()
 
@@ -167,54 +109,146 @@ def create_temperature_graph(dates, max_temps, min_temps):
         return None
     
 
-# From https://www.mysqltutorial.org/python-mysql/python-connecting-mysql-databases/
-def connect(config):
-    # Connect to MySQL database
+# Built upon https://www.mysqltutorial.org/python-mysql/python-connecting-mysql-databases/
+def fetch_from_DB(config, table_details_list):
+    # Connect to database once and fetch last 5 rows from each table
     conn = None
+    all_tables_data = {} # To store results for each table
+
     try:
-        print('Connecting to MySQL database...')
+        print('Connecting to MySQL database for multiple table query...')
         conn = MySQLConnection(**config)
 
         if conn.is_connected():
-            print('Connection is established.')
+            print('Connection established.')
+            cursor = conn.cursor(dictionary=True) # Get rows as dictionaries
+
+            for table_name in table_details_list:
+
+                query = f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 5"
+                
+                print(f"Executing query for table '{table_name}': {query}")
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                
+                all_tables_data[table_name] = rows
+                if rows:
+                    print(f"Successfully fetched {len(rows)} rows from '{table_name}'.")
+                else:
+                    print(f"No rows found in table '{table_name}' or it's empty.")
+            
+            cursor.close()
+            print("Cursor closed.")
+
         else:
-            print('Connection is failed.')
+            print('Connection failed.')
+
     except Error as error:
-        print(error)
+        print(f"Error while connecting to MySQL or executing query: {error}")
+        all_tables_data = {} 
+
     finally:
         if conn is not None and conn.is_connected():
             conn.close()
-            print('Connection is closed.')
+            print('Connection closed.')
+            
+    return all_tables_data
 
 
 # Flask Routing
 @app.route("/")
 @app.route("/home")
 def home():
-    getTemp()
+    # Configure Database Settings
     config = read_config()
-    connect(config)
-    daily_forecast_data = getWeather()
-    graph_image_base64 = None
+    
+    # Fetch from all 3 tables
+    tables_details_list = [
+        "sensor_readings1",
+        "sensor_readings2",
+        "sensor_readings3"
+    ]
+    # all_tables_data contains a dictionary -> key: table name, value: list of dictionaries each representing a row
+    all_tables_data = fetch_from_DB(config, tables_details_list)
 
-    if daily_forecast_data:
-        graph_image_base64 = create_temperature_graph(
-            daily_forecast_data['dates'],
-            daily_forecast_data['max_temps'],
-            daily_forecast_data['min_temps']
-        )
+    sr1_data = all_tables_data['sensor_readings1']
+    sr2_data = all_tables_data['sensor_readings2']
+    sr3_data = all_tables_data['sensor_readings3']
 
-    if graph_image_base64:
-        return render_template('index.html',
-                               graph_image=graph_image_base64, 
-                               error_message=None)
-    else:
-        return render_template('index.html',
-                               error_message="Could not retrieve weather data.",
-                               graph_image=None) 
+    timestamps = []
+    sr1_temps, sr2_temps, sr3_temps, avg_temps = [], [], [], []
+    sr1_hums, sr2_hums, sr3_hums, avg_hums = [], [], [], []
+    sr1_soils, sr2_soils, sr3_soils, avg_soils = [], [], [], []
+    sr1_winds, sr2_winds, sr3_winds, avg_winds = [], [], [], []
+
+    # Go through each row starting from the first of the 5 readings
+    for entry1, entry2, entry3 in zip(sr1_data[::-1], sr2_data[::-1], sr3_data[::-1]):
+        # Get timestamp (should be the same for each table so just pick from table 1)
+        timestamps.append(entry1['timestamp'])
+        # Append for sensor readings 1
+        sr1_temps.append(entry1['temperature'])
+        sr1_hums.append(entry1['humidity'])
+        sr1_soils.append(entry1['soil_moisture'])
+        sr1_winds.append(entry1['wind_speed'])
+        # Append for sensor readings 2
+        sr2_temps.append(entry2['temperature'])
+        sr2_hums.append(entry2['humidity'])
+        sr2_soils.append(entry2['soil_moisture'])
+        sr2_winds.append(entry2['wind_speed'])
+        # Append for sensor readings 3
+        sr3_temps.append(entry3['temperature'])
+        sr3_hums.append(entry3['humidity'])
+        sr3_soils.append(entry3['soil_moisture'])
+        sr3_winds.append(entry3['wind_speed'])
+    
+    print("Timestamps: ", timestamps)
+    print("Temperatures: ", sr1_temps, sr2_temps, sr3_temps)
+    print("Humidities: ", sr1_hums, sr2_hums, sr3_hums)
+    print("Soil Moistures: ",sr1_soils, sr2_soils, sr3_soils)
+    print("Wind Speeds: ", sr1_winds, sr2_winds, sr3_winds)
+
+    # Gather all forecast data in one API call
+    avg_t_forecast, avg_h_forecast, soil_3_9cm_forecast, max_w = getForecast()
+    temp_graph_image_base64, hum_graph_image_base64, soil_graph_image_base64, wind_graph_image_base64 = None, None, None, None
+
+    # Graph if forecast info returned
+    if avg_t_forecast:
+        temp_graph_image_base64 = create_graph(
+            forecast=avg_t_forecast,
+            ylabel="Temperature (°C)",
+            line_label=f"Avg. Temp. Forecast ({avg_t_forecast}°C)",
+            title="Temperature Readings and Forecast",
+            )
+    if avg_h_forecast:
+        hum_graph_image_base64 = create_graph(
+            forecast=avg_h_forecast,
+            ylabel="Humidity (%)",
+            line_label=f"Avg. Humidity Forecast ({avg_h_forecast}%)",
+            title="Humidity Readings and Forecast",
+            )
+    if soil_3_9cm_forecast:
+        soil_graph_image_base64 = create_graph(
+            forecast=soil_3_9cm_forecast,
+            ylabel="Soil Moisture at 3-9 cm (m³/m³)",
+            line_label=f"Avg Soil Mositure at 3-9 cm Forecast ({soil_3_9cm_forecast}m³/m³)",
+            title="Soil Mositure Readings and Forecast",
+            )
+    if max_w:
+        wind_graph_image_base64 = create_graph(
+            forecast=max_w,
+            ylabel="Wind Speed (m/s)",
+            line_label=f"Max Wind Speed Forecast ({max_w}m/s)",
+            title="Wind Speed Readings and Forecast",
+            )
+
+    return render_template('index.html',
+                            temp_graph_image=temp_graph_image_base64, 
+                            hum_graph_image=hum_graph_image_base64,
+                            soil_graph_image=soil_graph_image_base64,
+                            wind_graph_image=wind_graph_image_base64,
+                            error_message=None)
 
 
 # Run Server
 if __name__ == '__main__':
-    getForecast()
     app.run(debug=True, host='0.0.0.0', port=5000)
