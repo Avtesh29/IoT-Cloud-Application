@@ -1,15 +1,35 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>My Flask App</title>
+        <title>IoT Cloud</title>
         <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     </head>
     <body class="example">
-        <h1>Sensor Readings Website</h1>
-        <p>Data goes here:</p>
-        <div> hello </div>
+        {% if error_message %}
+            <h1>An Error Occurred</h1>
+            <p style="color: red;">{{ error_message }}</p>
+        {% else %}
+            <h1 style="margin-top: 30px; text-align: center;">Sensor Readings Website</h1>
+            <p>
+                Data goes here:<br><br>
+                Time: <pre style="display: inline;">{{ f_date }}</pre><br>
+                Today's Average Forecast: {{ w_data }}
+            </p>
+            
+            {% if graph_image %}
+            <div class="graph-container" style="margin-top: 30px; text-align: center;">
+                <h2 style="text-align: center;">Temperature Forecast Graph</h2>
+                <img src="data:image/png;base64,{{ graph_image }}" alt="Temperature Forecast Graph">
+            </div>
+            {% else %}
+            <div class="graph-container" style="margin-top: 30px;">
+                <p>Temperature graph could not be generated.</p>
+            </div>
+            {% endif %}
+
+            <div>hello</div> 
+        {% endif %}
     </body>
 </html>
