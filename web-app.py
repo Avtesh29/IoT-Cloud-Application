@@ -9,6 +9,9 @@ matplotlib.use('Agg') # IMPORTANT: Use a non-GUI backend for Matplotlib in a web
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import mplcyberpunk
+from mysql.connector import MySQLConnection, Error
+from config import read_config
+
 
 app = Flask(__name__)
 
@@ -110,13 +113,34 @@ def create_temperature_graph(dates, max_temps, min_temps):
     except Exception as e:
         app.logger.error(f"Error creating graph: {e}")
         return None
+    
 
+# From https://www.mysqltutorial.org/python-mysql/python-connecting-mysql-databases/
+def connect(config):
+    # Connect to MySQL database
+    conn = None
+    try:
+        print('Connecting to MySQL database...')
+        conn = MySQLConnection(**config)
+
+        if conn.is_connected():
+            print('Connection is established.')
+        else:
+            print('Connection is failed.')
+    except Error as error:
+        print(error)
+    finally:
+        if conn is not None and conn.is_connected():
+            conn.close()
+            print('Connection is closed.')
 
 
 # Flask Routing
 @app.route("/")
 @app.route("/home")
 def home():
+    config = read_config()
+    connect(config)
     weather_string, current_date_formatted, daily_forecast_data = getWeather()
     graph_image_base64 = None
 
@@ -131,14 +155,14 @@ def home():
         return render_template('index.html',
                                w_data=weather_string,
                                f_date=current_date_formatted,
-                               graph_image=graph_image_base64, # Pass image to template
+                               graph_image=graph_image_base64, 
                                error_message=None)
     else:
         return render_template('index.html',
                                error_message="Could not retrieve weather data.",
-                               graph_image=None) # Still pass graph_image as None
+                               graph_image=None) 
 
 
-# Run Server
+# Run Serve
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
