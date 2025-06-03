@@ -1,6 +1,7 @@
 from flask import Flask, render_template
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import textwrap
 import requests
 import io # For handling image in memory
 import base64 # For encoding image
@@ -69,7 +70,7 @@ def getForecast():
 
 
 # Function to generate the graph image
-def create_graph(forecast, ylabel, line_label, title):
+def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3):
     if not forecast:
         return None
     try:
@@ -82,8 +83,10 @@ def create_graph(forecast, ylabel, line_label, title):
         # ax.set_xlim()     # use later for settings x and y axis
         # ax.set_ylim()
 
-        # ax.plot(short_dates, avg_temp, marker='o', linestyle='-', color='g', label='Avg Temp Forecast (°C)')
-        ax.axhline(y=forecast, linestyle='-', color='b', label=line_label)
+        ax.plot(dates, sr1, marker='o', linestyle='-', color="#d606b0", label='Sensor 1 Readings')
+        ax.plot(dates, sr2, marker='o', linestyle='-', color="#07E0D6", label='Sensor 2 Readings')
+        ax.plot(dates, sr3, marker='o', linestyle='-', color="#003ada", label='Sensor 3 Readings')
+        ax.axhline(y=forecast, linestyle='--', color="#d60700", label=line_label)
         
         ax.set_title(title)
         ax.set_xlabel('Dates')
@@ -111,7 +114,7 @@ def create_graph(forecast, ylabel, line_label, title):
 
 # Built upon https://www.mysqltutorial.org/python-mysql/python-connecting-mysql-databases/
 def fetch_from_DB(config, table_details_list):
-    # Connect to database once and fetch last 5 rows from each table
+    # Connect to database once and fetch last 20 rows from each table
     conn = None
     all_tables_data = {} # To store results for each table
 
@@ -125,7 +128,7 @@ def fetch_from_DB(config, table_details_list):
 
             for table_name in table_details_list:
 
-                query = f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 5"
+                query = f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 20"
                 
                 print(f"Executing query for table '{table_name}': {query}")
                 cursor.execute(query)
@@ -154,6 +157,42 @@ def fetch_from_DB(config, table_details_list):
             
     return all_tables_data
 
+# Helper function to calculate sum of list of floats excluding 0 (faulty reading)
+def sum_excluding_zero(data_f):
+    sum = 0
+    size = 0
+    for num in data_f:
+        if num != 0.0:
+            sum += num
+            size += 1
+    return sum, size
+
+
+# Used to bin data together to reduce the impact of outliers and faulty readings
+def bin_data(data_list, num_bins):
+    binned_data = []            # Hold result
+    n = len(data_list)          # 20
+    bin_size = n // num_bins    # 4
+
+    for index in range(0, n-bin_size+1, bin_size):
+        agg, div = sum_excluding_zero(data_list[index : index+bin_size])
+        avg_val = round(agg / div, 1) if div != 0 else 0
+        binned_data.append(avg_val)
+
+    return binned_data
+
+# Group timestamps for x-axis labeling
+def group_timestamps(timestamps, num_bins):
+    grouped_timestamps = []     # Hold result
+    n = len(timestamps)         # 20
+    space = n // num_bins       # 4
+
+    for i in range(0, len(timestamps)-space+1, space):
+        x_label = textwrap.fill(f"{timestamps[i]} - {timestamps[i+space-1]}", width=12)
+        grouped_timestamps.append(x_label)
+    
+    return grouped_timestamps
+
 
 # Flask Routing
 @app.route("/")
@@ -181,10 +220,12 @@ def home():
     sr1_soils, sr2_soils, sr3_soils, avg_soils = [], [], [], []
     sr1_winds, sr2_winds, sr3_winds, avg_winds = [], [], [], []
 
-    # Go through each row starting from the first of the 5 readings
+    # Go through each row starting from the first of the 20 readings
+    # "Bin" groups of 4 together to deal with outliers, etc.
+    # Assume valid size of 20 everytime (handled in fetch_from_DB())
     for entry1, entry2, entry3 in zip(sr1_data[::-1], sr2_data[::-1], sr3_data[::-1]):
-        # Get timestamp (should be the same for each table so just pick from table 1)
-        timestamps.append(entry1['timestamp'])
+        # Get timestamp (should be the same for each table so just pick from any table)
+        timestamps.append(entry3['timestamp'].strftime("%B %d, %I:%M:%S %p"))
         # Append for sensor readings 1
         sr1_temps.append(entry1['temperature'])
         sr1_hums.append(entry1['humidity'])
@@ -207,6 +248,31 @@ def home():
     print("Soil Moistures: ",sr1_soils, sr2_soils, sr3_soils)
     print("Wind Speeds: ", sr1_winds, sr2_winds, sr3_winds)
 
+    # Group timestamps to represent bounds of bins
+    timestamps_g = group_timestamps(timestamps, num_bins=5)
+    # Bin sensor readings 1 
+    sr1_bin_t = bin_data(sr1_temps,num_bins=5)
+    sr1_bin_h = bin_data(sr1_hums,num_bins=5)
+    sr1_bin_s = bin_data(sr1_soils,num_bins=5)
+    sr1_bin_w = bin_data(sr1_winds,num_bins=5)
+    # Bin sensor readings 2
+    sr2_bin_t = bin_data(sr2_temps,num_bins=5)
+    sr2_bin_h = bin_data(sr2_hums,num_bins=5)
+    sr2_bin_s = bin_data(sr2_soils,num_bins=5)
+    sr2_bin_w = bin_data(sr2_winds,num_bins=5)
+    # Bin sensor readings 3 
+    sr3_bin_t = bin_data(sr3_temps,num_bins=5)
+    sr3_bin_h = bin_data(sr3_hums,num_bins=5)
+    sr3_bin_s = bin_data(sr3_soils,num_bins=5)
+    sr3_bin_w = bin_data(sr3_winds,num_bins=5)
+
+    print("Grouped Timestamps: ", timestamps_g)
+    print("Binned Temperatures: ", sr1_bin_t, sr2_bin_t, sr3_bin_t)
+    print("Binned Humidities: ", sr1_bin_h, sr2_bin_h, sr3_bin_h)
+    print("Binned Soil Moistures: ",sr1_bin_s, sr2_bin_s, sr3_bin_s)
+    print("Binned Wind Speeds: ", sr1_bin_w, sr2_bin_w, sr3_bin_w)
+
+
     # Gather all forecast data in one API call
     avg_t_forecast, avg_h_forecast, soil_3_9cm_forecast, max_w = getForecast()
     temp_graph_image_base64, hum_graph_image_base64, soil_graph_image_base64, wind_graph_image_base64 = None, None, None, None
@@ -218,6 +284,10 @@ def home():
             ylabel="Temperature (°C)",
             line_label=f"Avg. Temp. Forecast ({avg_t_forecast}°C)",
             title="Temperature Readings and Forecast",
+            dates=timestamps_g,
+            sr1=sr1_bin_t,
+            sr2=sr2_bin_t,
+            sr3=sr3_bin_t,
             )
     if avg_h_forecast:
         hum_graph_image_base64 = create_graph(
@@ -225,6 +295,10 @@ def home():
             ylabel="Humidity (%)",
             line_label=f"Avg. Humidity Forecast ({avg_h_forecast}%)",
             title="Humidity Readings and Forecast",
+            dates=timestamps_g,
+            sr1=sr1_bin_h,
+            sr2=sr2_bin_h,
+            sr3=sr3_bin_h,
             )
     if soil_3_9cm_forecast:
         soil_graph_image_base64 = create_graph(
@@ -232,6 +306,10 @@ def home():
             ylabel="Soil Moisture at 3-9 cm (m³/m³)",
             line_label=f"Avg Soil Mositure at 3-9 cm Forecast ({soil_3_9cm_forecast}m³/m³)",
             title="Soil Mositure Readings and Forecast",
+            dates=timestamps_g,
+            sr1=sr1_bin_s,
+            sr2=sr2_bin_s,
+            sr3=sr3_bin_s,
             )
     if max_w:
         wind_graph_image_base64 = create_graph(
@@ -239,6 +317,10 @@ def home():
             ylabel="Wind Speed (m/s)",
             line_label=f"Max Wind Speed Forecast ({max_w}m/s)",
             title="Wind Speed Readings and Forecast",
+            dates=timestamps_g,
+            sr1=sr1_bin_w,
+            sr2=sr2_bin_w,
+            sr3=sr3_bin_w,
             )
 
     return render_template('index.html',
