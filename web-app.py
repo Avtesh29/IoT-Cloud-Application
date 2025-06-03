@@ -70,7 +70,7 @@ def getForecast():
 
 
 # Function to generate the graph image
-def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3):
+def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3, avg):
     if not forecast:
         return None
     try:
@@ -78,14 +78,11 @@ def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3):
         plt.style.use("cyberpunk")
 
         fig, ax = plt.subplots(figsize=(10, 5)) # Adjust figsize as needed
-        # short_dates = [d.split('-', 1)[1] for d in dates] # "YYYY-MM-DD" -> "MM-DD"
-
-        # ax.set_xlim()     # use later for settings x and y axis
-        # ax.set_ylim()
 
         ax.plot(dates, sr1, marker='o', linestyle='-', color="#d606b0", label='Sensor 1 Readings')
         ax.plot(dates, sr2, marker='o', linestyle='-', color="#07E0D6", label='Sensor 2 Readings')
         ax.plot(dates, sr3, marker='o', linestyle='-', color="#003ada", label='Sensor 3 Readings')
+        ax.plot(dates, avg, marker='o', linestyle='-', color="#e8d903", label='Avergae Readings')
         ax.axhline(y=forecast, linestyle='--', color="#d60700", label=line_label)
         
         ax.set_title(title)
@@ -193,6 +190,13 @@ def group_timestamps(timestamps, num_bins):
     
     return grouped_timestamps
 
+# Get average across sensors
+def average_readings(sr1, sr2, sr3):
+    avg_readings = []       # Hold result
+    for r1, r2, r3 in zip(sr1, sr2, sr3):
+        avg_r = round((r1 + r2 + r3) / 3, 1)
+        avg_readings.append(avg_r)
+    return avg_readings
 
 # Flask Routing
 @app.route("/")
@@ -265,6 +269,11 @@ def home():
     sr3_bin_h = bin_data(sr3_hums,num_bins=5)
     sr3_bin_s = bin_data(sr3_soils,num_bins=5)
     sr3_bin_w = bin_data(sr3_winds,num_bins=5)
+    # Avg readings across all sennsors
+    avg_sens_t = average_readings(sr1_bin_t, sr2_bin_t, sr3_bin_t)
+    avg_sens_h = average_readings(sr1_bin_h, sr2_bin_h, sr3_bin_h)
+    avg_sens_s = average_readings(sr1_bin_s, sr2_bin_s, sr3_bin_s)
+    avg_sens_w = average_readings(sr1_bin_w, sr2_bin_w, sr3_bin_w)
 
     print("Grouped Timestamps: ", timestamps_g)
     print("Binned Temperatures: ", sr1_bin_t, sr2_bin_t, sr3_bin_t)
@@ -288,6 +297,7 @@ def home():
             sr1=sr1_bin_t,
             sr2=sr2_bin_t,
             sr3=sr3_bin_t,
+            avg=avg_sens_t,
             )
     if avg_h_forecast:
         hum_graph_image_base64 = create_graph(
@@ -299,6 +309,7 @@ def home():
             sr1=sr1_bin_h,
             sr2=sr2_bin_h,
             sr3=sr3_bin_h,
+            avg=avg_sens_h,
             )
     if soil_3_9cm_forecast:
         soil_graph_image_base64 = create_graph(
@@ -310,6 +321,7 @@ def home():
             sr1=sr1_bin_s,
             sr2=sr2_bin_s,
             sr3=sr3_bin_s,
+            avg=avg_sens_s,
             )
     if max_w:
         wind_graph_image_base64 = create_graph(
@@ -321,6 +333,7 @@ def home():
             sr1=sr1_bin_w,
             sr2=sr2_bin_w,
             sr3=sr3_bin_w,
+            avg=avg_sens_w,
             )
 
     return render_template('index.html',
