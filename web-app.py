@@ -12,6 +12,7 @@ import matplotlib.dates as mdates
 import mplcyberpunk
 from mysql.connector import MySQLConnection, Error
 from config import read_config
+import math
 
 # Constants
 LATITUDE = 37.0
@@ -70,7 +71,7 @@ def getForecast():
 
 
 # Function to generate the graph image
-def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3, avg):
+def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3, avg, y_bottom, y_top, soil):
     if not forecast:
         return None
     try:
@@ -82,12 +83,14 @@ def create_graph(forecast, ylabel, line_label, title, dates, sr1, sr2, sr3, avg)
         ax.plot(dates, sr1, marker='o', linestyle='-', color="#d606b0", label='Sensor 1 Readings')
         ax.plot(dates, sr2, marker='o', linestyle='-', color="#07E0D6", label='Sensor 2 Readings')
         ax.plot(dates, sr3, marker='o', linestyle='-', color="#003ada", label='Sensor 3 Readings')
-        ax.plot(dates, avg, marker='o', linestyle='-', color="#e8d903", label='Avergae Readings')
-        ax.axhline(y=forecast, linestyle='--', color="#d60700", label=line_label)
+        ax.plot(dates, avg, marker='o', linestyle='-', color="#e8d903", label='Average Readings')
+        if not soil:
+            ax.axhline(y=forecast, linestyle='--', color="#d60700", label=line_label)
         
         ax.set_title(title)
         ax.set_xlabel('Dates')
         ax.set_ylabel(ylabel)
+        ax.set_ylim(y_bottom, y_top)
         ax.legend()
         ax.grid(True)
         
@@ -162,6 +165,8 @@ def sum_excluding_zero(data_f):
         if num != 0.0:
             sum += num
             size += 1
+    if size == 0:
+        size = float('nan')
     return sum, size
 
 
@@ -173,7 +178,7 @@ def bin_data(data_list, num_bins):
 
     for index in range(0, n-bin_size+1, bin_size):
         agg, div = sum_excluding_zero(data_list[index : index+bin_size])
-        avg_val = round(agg / div, 1) if div != 0 else 0
+        avg_val = round(agg / div, 1) if div != float('nan') else 0
         binned_data.append(avg_val)
 
     return binned_data
@@ -194,7 +199,22 @@ def group_timestamps(timestamps, num_bins):
 def average_readings(sr1, sr2, sr3):
     avg_readings = []       # Hold result
     for r1, r2, r3 in zip(sr1, sr2, sr3):
-        avg_r = round((r1 + r2 + r3) / 3, 1)
+        num_count = 0
+        sum_r = 0.0
+        if not math.isnan(r1):
+            sum_r += r1
+            num_count += 1
+        if not math.isnan(r2):
+            sum_r += r2
+            num_count += 1
+        if not math.isnan(r3):
+            sum_r += r3
+            num_count += 1
+        # print(r1, r2, r3, sum_r, num_count)
+        if num_count == 0:
+            avg_r = float('nan')
+        else:
+            avg_r = round(sum_r / num_count, 1)
         avg_readings.append(avg_r)
     return avg_readings
 
@@ -219,10 +239,10 @@ def home():
     sr3_data = all_tables_data['sensor_readings3']
 
     timestamps = []
-    sr1_temps, sr2_temps, sr3_temps, avg_temps = [], [], [], []
-    sr1_hums, sr2_hums, sr3_hums, avg_hums = [], [], [], []
-    sr1_soils, sr2_soils, sr3_soils, avg_soils = [], [], [], []
-    sr1_winds, sr2_winds, sr3_winds, avg_winds = [], [], [], []
+    sr1_temps, sr2_temps, sr3_temps = [], [], []
+    sr1_hums, sr2_hums, sr3_hums = [], [], []
+    sr1_soils, sr2_soils, sr3_soils = [], [], []
+    sr1_winds, sr2_winds, sr3_winds = [], [], []
 
     # Go through each row starting from the first of the 20 readings
     # "Bin" groups of 4 together to deal with outliers, etc.
@@ -246,11 +266,11 @@ def home():
         sr3_soils.append(entry3['soil_moisture'])
         sr3_winds.append(entry3['wind_speed'])
     
-    print("Timestamps: ", timestamps)
-    print("Temperatures: ", sr1_temps, sr2_temps, sr3_temps)
-    print("Humidities: ", sr1_hums, sr2_hums, sr3_hums)
-    print("Soil Moistures: ",sr1_soils, sr2_soils, sr3_soils)
-    print("Wind Speeds: ", sr1_winds, sr2_winds, sr3_winds)
+    # print("Timestamps: ", timestamps)
+    # print("Temperatures: ", sr1_temps, sr2_temps, sr3_temps)
+    # print("Humidities: ", sr1_hums, sr2_hums, sr3_hums)
+    # print("Soil Moistures: ",sr1_soils, sr2_soils, sr3_soils)
+    # print("Wind Speeds: ", sr1_winds, sr2_winds, sr3_winds)
 
     # Group timestamps to represent bounds of bins
     timestamps_g = group_timestamps(timestamps, num_bins=5)
@@ -275,11 +295,13 @@ def home():
     avg_sens_s = average_readings(sr1_bin_s, sr2_bin_s, sr3_bin_s)
     avg_sens_w = average_readings(sr1_bin_w, sr2_bin_w, sr3_bin_w)
 
-    print("Grouped Timestamps: ", timestamps_g)
-    print("Binned Temperatures: ", sr1_bin_t, sr2_bin_t, sr3_bin_t)
-    print("Binned Humidities: ", sr1_bin_h, sr2_bin_h, sr3_bin_h)
-    print("Binned Soil Moistures: ",sr1_bin_s, sr2_bin_s, sr3_bin_s)
-    print("Binned Wind Speeds: ", sr1_bin_w, sr2_bin_w, sr3_bin_w)
+    # print("Grouped Timestamps: ", timestamps_g)
+    # print("Binned Temperatures: ", sr1_bin_t, sr2_bin_t, sr3_bin_t)
+    # print("Binned Humidities: ", sr1_bin_h, sr2_bin_h, sr3_bin_h)
+    # print("Binned Soil Moistures: ",sr1_bin_s, sr2_bin_s, sr3_bin_s)
+    # print("Binned Wind Speeds: ", sr1_bin_w, sr2_bin_w, sr3_bin_w)
+
+    print("Avgs: ", avg_sens_t, avg_sens_h, avg_sens_s, avg_sens_w)
 
 
     # Gather all forecast data in one API call
@@ -298,6 +320,9 @@ def home():
             sr2=sr2_bin_t,
             sr3=sr3_bin_t,
             avg=avg_sens_t,
+            y_bottom=0,
+            y_top=30,
+            soil=False,
             )
     if avg_h_forecast:
         hum_graph_image_base64 = create_graph(
@@ -310,6 +335,9 @@ def home():
             sr2=sr2_bin_h,
             sr3=sr3_bin_h,
             avg=avg_sens_h,
+            y_bottom=0,
+            y_top=100,
+            soil=False,
             )
     if soil_3_9cm_forecast:
         soil_graph_image_base64 = create_graph(
@@ -322,6 +350,9 @@ def home():
             sr2=sr2_bin_s,
             sr3=sr3_bin_s,
             avg=avg_sens_s,
+            y_bottom=0,
+            y_top=400,
+            soil=True,
             )
     if max_w:
         wind_graph_image_base64 = create_graph(
@@ -334,6 +365,9 @@ def home():
             sr2=sr2_bin_w,
             sr3=sr3_bin_w,
             avg=avg_sens_w,
+            y_bottom=0,
+            y_top=10,
+            soil=False,
             )
 
     return render_template('index.html',
