@@ -1,4 +1,4 @@
-# IoT Cloud Application: End-to-End Sensor Data System
+# Campus Weather: End-to-End Sensor Data System
 
 This project (in progress) aims to implement an end-to-end IoT system for collecting environmental data from sensor nodes, storing it in a database, and displaying it via a web application.
 
